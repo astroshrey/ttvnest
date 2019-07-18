@@ -1,9 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import load_holczer as lh
 import forward_model as fm
 import retrieval as ret
 from constants import *
+matplotlib.rcParams['mathtext.fontset'] = 'cm'
+matplotlib.rcParams['font.family'] = 'STIXGeneral'
+matplotlib.rcParams['font.size'] = 20
 
 def plot_ttv_from_result(theta, data, errs, dt = 0.1, sim_length = 2000):
 	n_planets = int((len(theta))/5)
@@ -15,7 +17,6 @@ def plot_ttv_from_result(theta, data, errs, dt = 0.1, sim_length = 2000):
 	plot_ttv(data, models, errs, epochs, paramv)
 	plot_resid(data, models, errs, epochs, paramv)
 	return None
-
 
 def plot_ttv(data, models, errs, epochs, paramv):
 	for datum, model, err, epoch, params in zip(data, models, errs, epochs, paramv):    
