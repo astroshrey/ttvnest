@@ -7,6 +7,33 @@ matplotlib.rcParams['mathtext.fontset'] = 'cm'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
 matplotlib.rcParams['font.size'] = 20
 
+def dynesty_plots(dresults, nplanets):
+	labels = []
+	for i in range(nplanets):
+		num = str(i + 1)
+		labels += [r'$M_'+num+'/M_\star$', r'$P_'+num+'\ [\mathrm{days}]$', 
+			r'$e_'+num+'\cos(\omega_'+num+')$', r'$e_'+num+'\sin(\omega_'+num+')$',
+			r'$\mathcal{M}_'+num+'\ [^\circ]$']
+
+	plt.figure(figsize = (20, 20))
+	cfig, caxes = dyplot.cornerplot(dresults, color = 'blue', max_n_ticks=3, labels = labels)
+	plt.show()
+
+	plt.figure(figsize = (20, 20))
+	rfig, raxes = dyplot.runplot(dresults)
+	plt.show()
+	
+	plt.figure(figsize = (20, 20))
+	tfig, taxes = dyplot.traceplot(dresults, truths=np.zeros(ndim), show_titles=True, trace_cmap='viridis',
+		labels = labels)
+	plt.show()
+
+	return None
+
+def plot_best_result(dresults, data, errs):
+	best_fit = dresults.samples[np.argmax(dresults.logl)]
+	return plot_ttv_from_result(best_fit, data, errs)
+
 def plot_ttv_from_result(theta, data, errs, dt = 0.1, sim_length = 2000):
 	n_planets = int((len(theta))/5)
 	paramv = [theta[i*5:(i+1)*5] for i in range(n_planets)]
