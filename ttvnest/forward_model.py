@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import ttvfast
-from constants import *
+from .constants import *
 
 def run_simulation(stellarmass, dt, sim_length, *argv):
 	nplanets = len(argv)
