@@ -1,5 +1,5 @@
 import numpy as np
-from constants import *
+from .constants import *
 
 def get_data(catfile, koi_star, nplanets):
 	obs = []
