@@ -2,6 +2,7 @@ import numpy as np
 from dynesty import utils as dyfunc
 from scipy.ndimage import gaussian_filter as norm_kde
 from . import forward_model as fm
+from . import retrieval as ret
 import matplotlib.pyplot as plt
 import scipy
 
@@ -38,6 +39,17 @@ def propogate_all_models(samples_equal, nplanets, stellarmass, dt, sim_length):
 			print(str(i/perc)+'% complete')
 	return models_all
 
+
+def get_obs_epoch(my_obs_time, results, measured_planet, 
+	stellarmass = 1., dt = 0.1, sim_length = 7305.):
+	samps = results.samples
+	nplanets = int(samps.shape[1]/5)
+	ind = np.argmax(results.logl)
+	best_result = samps[ind]
+	paramv = [best_result[i*5:(i+1)*5] for i in range(nplanets)]
+	models = fm.run_simulation(stellarmass, dt, sim_length, *paramv)
+	epochs = [ret.get_inds(model, [my_obs_time]) for model in models]
+	return epochs[measured_planet][0]
 
 def calculate_dkl_timeseries(models_all, samples_equal, measured_planet, 
 	measurement_uncertainty, nsamps):
