@@ -4,6 +4,7 @@ from . import forward_model as fm
 from . import retrieval as ret
 from dynesty import plotting as dyplot
 from dynesty import utils as dyfunc
+from scipy.ndimage import gaussian_filter as norm_kde
 from .constants import *
 import matplotlib
 import random
@@ -47,8 +48,8 @@ def plot_results(dresults, data, errs, uncertainty_curves = 0, dt = 0.1,
 
 	samples = dresults.samples
 	weights = np.exp(dresults.logwt - dresults.logz[-1])
-	median_result = [dyfunc.quantile(samples[:,i], [0.5], 
-		weights = weights)[0] for i in range(samples.shape[1])]
+	ind = np.argmax(dresults.logl)
+	median_result = dresults.samples[ind]
 	samples_equal = dyfunc.resample_equal(samples, weights)
 	inds = np.arange(samples_equal.shape[0])
 	pick = np.random.choice(inds, uncertainty_curves, replace=False)
@@ -77,35 +78,64 @@ def plot_results(dresults, data, errs, uncertainty_curves = 0, dt = 0.1,
 		model = models[i]
 		err = errs[i]
 		epoch = epochs[i]
-		datum_trend = get_trend(datum, epoch)
-		model_trend = get_trend(model[epoch], epoch)
+		datum_trend = get_trend(datum, epoch, err, paramv[i][1])
 		ttv_datum = datum - datum_trend(epoch)
-		ttv_model = model - model_trend(np.arange(len(model)))
-		plt.errorbar(datum, ttv_datum*24.*60., yerr = err*24.*60., 
-			linestyle = '', color = 'k', marker = 'o', ms = 4, 
+		ttv_model = model - datum_trend(np.arange(len(model)))
+		plt.figure(figsize = (12, 8))
+		plt.errorbar(epoch, ttv_datum*24.*60., yerr = err*24.*60.,
+			linestyle = '', color = 'k', marker = 'o', ms = 4,
 			zorder = 1)
-		plt.plot(model, ttv_model*24.*60., color = 'blue', 
-			linewidth = 1, zorder = 1000)
+		plt.plot(np.arange(len(model)), ttv_model*24.*60.,
+			color = 'blue', linewidth = 1, zorder = 1000)
 		for unc_mod, unc_ep in zip(unc_models, unc_epochs):
 			unc_model = unc_mod[i]
 			unc_epoch = unc_ep[i]
-			unc_model_trend = get_trend(unc_model[unc_epoch],
-				unc_epoch)
-			unc_ttv_model = unc_model - unc_model_trend(
+			unc_ttv_model = unc_model - datum_trend(
 				np.arange(len(unc_model)))
-			plt.plot(unc_model, unc_ttv_model*24.*60., 
-				color = 'blue', linewidth = 0.5, alpha = 0.05,
-				zorder = 10)
-
-		plt.xlabel("Time [BJD - 2454900]")
+			plt.plot(np.arange(len(unc_model)),
+				unc_ttv_model*24.*60., color = 'blue',
+				linewidth = 0.5, alpha = 0.05, zorder = 10)
+			plt.xlim(0, len(unc_model))
+		plt.xlabel("Epoch")
 		plt.ylabel("TTV [min]")
 		plt.show()
+		plt.close('all')
 	return None
 
-def get_trend(data, obsind):
-	z = np.polyfit(obsind, data, 1)
+def get_trend(data, obsind, errs, get_uncertainty = False):
+	z = np.polyfit(obsind, data, 1, w = 1/errs)
 	p = np.poly1d(z)
 	return p
+
+def plot_apsidal_alignment(results, nplanets = 2, bins = 500):
+	if nplanets != 2:
+		print("Only supported for two-planet systems right now")
+		return None
+	samples = results.samples
+	weights = np.exp(results.logwt - results.logz[-1])
+	samples_equal = dyfunc.resample_equal(samples, weights)
+	ecosw_ind = 2
+	esinw_ind = 3
+	planet_1_ecosw = samples_equal[:,ecosw_ind]
+	planet_1_esinw = samples_equal[:,esinw_ind]
+	planet_2_ecosw = samples_equal[:,ecosw_ind + 5]
+	planet_2_esinw = samples_equal[:,esinw_ind + 5]
+	planet_1_w = np.arctan2(planet_1_esinw, planet_1_ecosw)*180./np.pi
+	planet_2_w = np.arctan2(planet_2_esinw, planet_2_ecosw)*180./np.pi
+	apsidal_alignment = planet_2_w - planet_1_w
+	
+	span = 0.999999426697
+	q = [0.5 - 0.5 * span, 0.5 + 0.5 * span]
+	ranges = dyfunc.quantile(apsidal_alignment, q)
+	n1, b1 = np.histogram(apsidal_alignment, bins = bins, range = ranges,
+		density = True)
+	n1 = norm_kde(n1, 10.)
+	x1 = 0.5 * (b1[1:] + b1[:-1])
+	y1 = n1
+	plt.fill_between(x1, y1, color='b', alpha = 0.5)
+	plt.xlabel(r'$\omega_2 - \omega_1$ [$\degree$]')
+	plt.show()
+	return None
 
 def plot_results_with_uncertainty(theta, data, errs, dt = 0.1, sim_length = 2000):
 	n_planets = int((len(theta))/5)
@@ -131,8 +161,8 @@ def plot_ttv_from_params(theta, data, errs, dt = 0.1, sim_length = 2000):
 
 def plot_ttv(data, models, errs, epochs, paramv):
 	for datum, model, err, epoch, params in zip(data, models, errs, epochs, paramv):    
-		ttv_datum = detrend(datum, epoch)
-		ttv_model = detrend(model, epoch)
+		ttv_datum = detrend(datum, err, epoch)
+		ttv_model = detrend(model, err, epoch)
 		plt.errorbar(datum, ttv_datum*24.*60., yerr = err*24.*60., linestyle = '',
 			color = 'k', marker = 'o')
 		plt.plot(model, ttv_model*24.*60., ms = 2, color = 'blue', linewidth = 1)
@@ -150,7 +180,42 @@ def plot_resid(data, models, errs, epochs, paramv):
 		plt.show()
 	return None
 
-def detrend(data, obsind):
-	z = np.polyfit(obsind, data, 1)
+def plot_information_timeseries(all_divs, obs_epoch = None):
+	plt.figure(figsize = (12, 8))
+	percentiles = np.percentile(all_divs, [2.5, 50, 97.5], axis = 1)
+	plt.plot(np.arange(all_divs.shape[0]), percentiles[1], 
+		c = 'cornflowerblue', linestyle = '-')
+
+	plt.fill_between(np.arange(all_divs.shape[0]), percentiles[1], 
+		percentiles[0], color = 'cornflowerblue', alpha = 0.2, 
+		linewidth = 0.)
+
+	plt.fill_between(np.arange(all_divs.shape[0]), percentiles[1],
+		percentiles[2], color = 'cornflowerblue', alpha = 0.2,
+		linewidth = 0.)
+
+	plt.hlines([1-3/(8*np.log(2))], 0, all_divs.shape[0], colors = 'r',
+		linestyles = '--', alpha = 0.4, 
+		label = 'Approx. 2x reduction in uncertainty')
+
+	if obs_epoch is not None:
+		plt.vlines([obs_epoch], 0.01, max(all_divs.flatten())*1.2,
+			colors = 'b', linestyles = '--', alpha = 0.4,
+			label = 'Epoch of observation')
+
+	plt.ylim(0.01, max(all_divs.flatten())*1.2)
+	plt.xlim(0, all_divs.shape[0])
+	plt.yscale('log')
+	plt.xlabel("Epoch")
+	plt.ylabel("Expected Information Gain (bits)")
+	plt.legend(loc = 'best')
+	plt.show()
+	return None
+
+def detrend(data, errs, obsind, get_uncertainty = False):
+	z, cov = np.polyfit(obsind, data, 1, w = 1/errs, cov = True)
 	p = np.poly1d(z)
+	if get_uncertainty:
+		print(cov)
+		return (data - p(obsind), cov)
 	return data - p(obsind)
