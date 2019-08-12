@@ -4,27 +4,33 @@ from . import plot_utils as pu
 import dynesty
 from dynesty import utils as dyfunc
 
-def retrieve(nplanets, prior_transform, data, errs):
+def retrieve(nplanets, prior_transform, data, errs, sampler = 'rwalk',
+	bounder = 'multi', pool = None, queue_size = None):
 	ndim = nplanets*5
+	init_live = 100*ndim
 
 	#the mean anomaly is always periodic, so do this for every planet
 	periodic = [5*i + 4 for i in range(nplanets)]
-
-	dsampler = dynesty.DynamicNestedSampler(log_likelihood, prior_transform,
-		ndim, logl_args = (data, errs), sample = 'rwalk', 
-		bound = 'multi')
-	dsampler.run_nested(wt_kwargs = {'pfrac':1.0})
-
+	print("Running dynesty with the {0} sampler and {1} bounding...".format(
+		sampler, bounder))
+	dsampler = dynesty.DynamicNestedSampler(log_likelihood, 
+		prior_transform, ndim, logl_args = (data, errs),
+		sample = sampler, bound = bounder, periodic = periodic,
+		pool = pool, queue_size = queue_size)
+	dsampler.run_nested(wt_kwargs = {'pfrac':1.0}, nlive_init = init_live)
 	dresults = dsampler.results
+
 	return dresults
 
-def posterior_summary(results, filename = None):
+def posterior_summary(results, filename = None, equal_samples = False):
 	samples = results.samples
-	weights = np.exp(results.logwt - results.logz[-1])
-	samples_equal = dyfunc.resample_equal(samples, weights)
-	quants = [dyfunc.quantile(samples[:,i], [0.025, 0.5, 0.975],
-		weights = weights) for i in range(samples.shape[1])]
-
+	if not equal_samples:
+		weights = np.exp(results.logwt - results.logz[-1])
+		quants = [dyfunc.quantile(samples[:,i], [0.025, 0.5, 0.975],
+			weights = weights) for i in range(samples.shape[1])]
+	else:
+		quants = [dyfunc.quantile(samples[:,i],[0.025,0.5,0.975]) \
+			for i in range(samples.shape[1])]
 	nplanets = int(samples.shape[1]/5)
 	labels = pu.gen_labels(nplanets)
 	
