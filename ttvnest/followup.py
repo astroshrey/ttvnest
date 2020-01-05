@@ -3,12 +3,13 @@ from dynesty import utils as dyfunc
 from scipy.ndimage import gaussian_filter as norm_kde
 from . import forward_model as fm
 from . import retrieval as ret
+from .constants import *
 import matplotlib.pyplot as plt
 import scipy
 
 def calculate_information_timeseries(results, measurement_uncertainty,
 	measured_planet, stellarmass = 1, dt = 0.1, sim_length = 7305., 
-	nsamps = 100):
+	nsamps = 100, start_time = tkep):
 
 	samples = results.samples
 	nplanets = int(samples.shape[1]/5)
@@ -19,35 +20,42 @@ def calculate_information_timeseries(results, measurement_uncertainty,
 	#then need to propogate all models forward
 	print("Propogating all models in posterior forward to time {0}...".format(sim_length))
 	models_all = propogate_all_models(samples_equal, nplanets, 
-		stellarmass, dt, sim_length)
+		stellarmass, dt, start_time, sim_length)
 	#finally calculate the distribution of information gains at each time
 	print("Calculating the Kullback-Leibler Divergence distribution at each epoch...")
 	all_divs = calculate_dkl_timeseries(models_all, samples_equal,
 		measured_planet, measurement_uncertainty, nsamps)
 	return all_divs
 
-def propogate_all_models(samples_equal, nplanets, stellarmass, dt, sim_length):
+def propogate_all_models(samples_equal, nplanets, stellarmass, dt, 
+	start_time, sim_length):
 	models_all = []
 	n_samples = samples_equal.shape[0]
+	old_perc_done = 0
 	for i in range(n_samples):
 		theta = samples_equal[i,:]
 		paramv = [theta[i*5: (i + 1)*5] for i in range(nplanets)]
-		models = fm.run_simulation(stellarmass, dt, sim_length, *paramv)
+		models = fm.run_simulation(stellarmass, dt, start_time,
+			sim_length, *paramv)
 		models_all.append(models)
-		perc = int(n_samples/100)
-		if i % perc == 0:
-			print(str(i/perc)+'% complete')
+
+		new_perc_done = int(100*i/n_samples)
+		if old_perc_done != new_perc_done:
+			old_perc_done = new_perc_done	
+			print(str(new_perc_done)+'% complete')
+	
 	return models_all
 
 
 def get_obs_epoch(my_obs_time, results, measured_planet, 
-	stellarmass = 1., dt = 0.1, sim_length = 7305.):
+	stellarmass = 1., dt = 0.1, start_time = tkep, sim_length = 7305.):
 	samps = results.samples
 	nplanets = int(samps.shape[1]/5)
 	ind = np.argmax(results.logl)
 	best_result = samps[ind]
 	paramv = [best_result[i*5:(i+1)*5] for i in range(nplanets)]
-	models = fm.run_simulation(stellarmass, dt, sim_length, *paramv)
+	models = fm.run_simulation(stellarmass, dt, start_time, 
+		sim_length, *paramv)
 	epochs = [ret.get_inds(model, [my_obs_time]) for model in models]
 	return epochs[measured_planet][0]
 
@@ -55,15 +63,17 @@ def calculate_dkl_timeseries(models_all, samples_equal, measured_planet,
 	measurement_uncertainty, nsamps):
 	model_len = len(models_all[0][measured_planet])
 	all_divs = np.zeros([model_len, nsamps])
+	old_perc_done = 0
 	#for each time, calculate and save the dkl distribution
 	for i in range(model_len):
 		all_divs[i,:] = get_dkl_distribution(i, models_all, 
 			samples_equal, measured_planet, measurement_uncertainty,
 			nsamps)
 		#progress bar
-		perc = int(model_len/100)
-		if i % perc == 0:
-			print(str(i/perc)+'% complete')
+		new_perc_done = int(100*i/model_len)
+		if old_perc_done != new_perc_done:
+			old_perc_done = new_perc_done	
+			print(str(new_perc_done)+'% complete')
 	return all_divs
 
 def get_dkl_distribution(epoch, models_all, samples_equal, measured_planet,
