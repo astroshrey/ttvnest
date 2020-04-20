@@ -1,9 +1,10 @@
-import pickle
+import dill as pickle
 
-def save_results(results, outname = 'results.p'):
-	pickle.dump(results, open(outname, 'wb'))
+def save_results(system, outname = 'results.p'):
+	with open(outname, 'wb') as f:
+		pickle.dump(system, f)
 	return outname
 
 def load_results(loadname):
-	results = pickle.load(open(loadname, 'rb'))
-	return results
+	system = pickle.load(open(loadname, 'rb'))
+	return system
