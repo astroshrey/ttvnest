@@ -179,6 +179,24 @@ def plot_information_timeseries(all_divs, obs_epoch = None):
 	plt.show()
 	return None
 
+def plot_ttv_data(system):
+	data = system.data
+	errs = system.errs
+	epochs = system.epochs
+
+	for datum, err, epoch in zip(data, errs, epochs):
+		plt.figure(figsize = (12, 8))
+		datum_trend = get_trend(datum, epoch, err)
+		ttv_datum = datum - datum_trend(epoch)
+		plt.errorbar(epoch, ttv_datum*24.*60., yerr = err*24.*60.,
+			linestyle = '', color = 'k', marker = 'o', ms = 4,
+			zorder = 1)
+		plt.xlabel("Epoch")
+		plt.ylabel("TTV [min]")
+		plt.show()
+		plt.close('all')
+	return None
+
 def debug_plots(nplanets, data, epochs, errs, models):
 	for i in range(nplanets):
 		datum_trend = get_trend(data[i], epochs[i], errs[i])
