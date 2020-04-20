@@ -8,13 +8,11 @@ import scipy.stats as ss
 from dynesty import utils as dyfunc
 
 class TTVSystem:
-	def __init__(self, *planets, dt = 0.1, start_time = tkep,
-		sim_length = 1000.):
+	def __init__(self, *planets, dt = None, start_time = None,
+		sim_length = None, verbose = True):
 		self.planets = planets
 		self.nplanets = len(self.planets)
-		self.dt = dt
 		self.start_time = start_time
-		self.sim_length = sim_length
 		self.transiting = [pl.transiting for pl in self.planets]
 
 		self.data = np.array([p.ttv for p in self.planets \
@@ -23,14 +21,72 @@ class TTVSystem:
 			if p.transiting])
 		self.epochs = np.array([p.epochs for p in self.planets \
 			if p.transiting])
-
 		self.all_priors = self.get_all_priors()
+	
+		if dt is not None:
+			self.dt = dt
+		else:
+			self.dt = self.calculate_dt_from_priors()
+
+
+		alltimes = np.concatenate(self.data).ravel()
+		mintime = np.floor(min(alltimes)) - buffersize
+		maxtime = np.ceil(max(alltimes)) + buffersize
+
+		if start_time is not None:
+			self.start_time = start_time
+		else:
+			self.start_time = mintime
+		self.reference_times(mintime)
+
+		if sim_length is not None:
+			#external timekeeping
+			self.sim_length = sim_length
+		else:
+			#internal timekeeping
+			self.sim_length = maxtime - mintime
+		if verbose:
+			self.print_timekeeping_standards()
+
 		self.priors_for_fit = self.get_non_fixed_priors()
 		self.periodic = self.get_periodic_indices()
 		self.fit_param_names = self.get_fit_param_names()
-		self.ndim = len(self.fit_param_names)
 
+		self.ndim = len(self.fit_param_names)
 		self.results = None
+
+	def reference_times(self, reftime):
+		#reference all data to reftime
+		self.data -= reftime
+		#reference all T0 priors to reftime
+		for planet in range(self.nplanets):
+			if self.transiting[planet]:
+				#only transiting planets have T0 prior
+				T0_index = planet*7+6
+				prior = list(self.all_priors[T0_index])
+				prior[2] -= reftime
+				if prior[1] == 'Uniform':
+					prior[3] -= reftime
+				self.all_priors[T0_index] = tuple(prior)
+		return None 
+		
+
+	def print_timekeeping_standards(self):
+		print("Simulation start/reference time: ", self.start_time)
+		print("ttvnest timestep: ", self.dt)
+		print("Simulation length: ", self.sim_length)
+		print("Simulation end time: ",
+			self.start_time + self.sim_length)
+		return None
+	
+	def calculate_dt_from_priors(self):
+		periods = []
+		for i in range(self.nplanets):
+			prior = self.all_priors[i*7+1]
+			periods.append(prior[2])
+		min_timescale = min(periods)
+		#to avoid timestep-induced chaos you want dt < min(P)/20
+		return min_timescale / 25 
 
 	def get_all_priors(self):
 		all_priors = []
@@ -56,8 +112,8 @@ class TTVSystem:
 		def unif(u, lo, up):
 			return lo + u*(up - lo)
 	
-		def per(u):
-			return (u % 1.) * 360.
+		def per(u, lo, up):
+			return lo + (u % 1.)*(up - lo)
 
 		transform_dict = {'Uniform': unif,
 				'Normal': ss.norm.ppf,
@@ -81,13 +137,14 @@ class TTVSystem:
 					fit_param_names.append(
 			r'$\mathcal{M}_'+i+'\ [\mathrm{degrees}]$')
 				else:
-					conversion_arr = [r'$M_'+i+'/M_\star$',
-					r'$P_'+i+'\ [\mathrm{days}]$',
-					r'$e_'+i+'\cos(\omega_'+i+')$',
-					r'$e_'+i+'\sin(\omega_'+i+')$', 
-					r'$i_'+i+'\ [\mathrm{degrees}]$',
-					r'$\Omega_'+i+'\ [\mathrm{degrees}]$',
-					r'$T_{0,'+i+'}\ [\mathrm{days}]$']
+					conversion_arr = [
+				r'$M_'+i+r'/M_\star/3\times10^{-6}$',
+				r'$P_'+i+'\ [\mathrm{days}]$',
+				r'$\sqrt{e}_'+i+'\cos(\omega_'+i+')$',
+				r'$\sqrt{e}_'+i+'\sin(\omega_'+i+')$', 
+				r'$i_'+i+'\ [\mathrm{degrees}]$',
+				r'$\Omega_'+i+'\ [\mathrm{degrees}]$',
+				r'$T_{0,'+i+'}\ [\mathrm{days}]$']
 					fit_param_names.append(
 						conversion_arr[j % 7])
 		return fit_param_names
@@ -113,25 +170,26 @@ class TTVSystem:
 		return mean_anomaly % 360
 
 	def forward_model(self, theta):
-		start = self.start_time - tref
+		start = self.start_time
 		end = start + self.sim_length
-		stellarmass = 1.
-		
 		system = []
 		thetas = self.parse_with_fixed(theta)
 		for i_pl, arr in enumerate(thetas):
 			if self.planets[i_pl].transiting:
-				mp_ms, P, ecosw, esinw, i, Omega, t0 = arr
-				e = np.sqrt(ecosw**2 + esinw**2)
-				w = np.arctan2(esinw, ecosw)*180./np.pi
+				mp_ms, P, hprime, kprime, i, Omega, t0 = arr
+				e = hprime**2 + kprime**2
+				if e > e_cutoff:
+					return None
+				w = np.arctan2(kprime, hprime)*180./np.pi
 				t0 += start
 				M = self.t0_to_mean_anom(t0, e, w, P, start)
 			else:
-				mp_ms, P, ecosw, esinw, i, Omega, M = arr
-				
+				mp_ms, P, hprime, kprime, i, Omega, M = arr	
 
-			e = np.sqrt(ecosw**2 + esinw**2)
-			w = np.arctan2(esinw, ecosw)*180./np.pi
+			e = hprime**2 + kprime**2
+			if e > e_cutoff:
+				return None
+			w = np.arctan2(kprime, hprime)*180./np.pi
 			planet_params = [mp_ms*earth_per_sun, P, e, i, 
 				Omega, w, M]
 			system.append(ttvfast.models.Planet(*planet_params))
@@ -139,6 +197,7 @@ class TTVSystem:
 		results = ttvfast.ttvfast(system, stellarmass, start, 
 			self.dt, end)
 		results = results['positions']
+
 		planet = np.array(results[0], dtype = 'int')
 		time = np.array(results[2], dtype = 'float')
 		timing_arrays = []
@@ -150,34 +209,25 @@ class TTVSystem:
 				timing_arrays.append(timing_arr)
 		return np.array(timing_arrays)
 
-	def log_likelihood(self, theta, data, errs, epochs):
-		try:
-			# calculate the model
-			models = self.forward_model(theta)
-			
-			#then match model to observed epochs
-			#(this accounts for observation gaps
-			models = np.array([model[epoch] for model, epoch in \
-                        zip(models, epochs)])
-
-			"""
-			import matplotlib.pyplot as plt
-			datum_trend = pu.get_trend(data[0], epochs[0], errs[0])
-			ttv_model = models[0] - datum_trend(epochs[0])
-			plt.plot(epochs[0], ttv_model)
-			plt.plot(epochs[0], data[0] - datum_trend(epochs[0]), 'ko')
-			plt.xlabel("Epoch")
-			plt.ylabel("TTV [day]")
-			print(data[0], models[0])
-			print(datum_trend(epochs[0]))
-			print(theta)
-			plt.show()
-			"""
-		except IndexError as e:
+	def log_likelihood(self, theta, data, errs, epochs, debug = False):
+		# calculate the model
+		models = self.forward_model(theta)
+		if models is not None:
+			try:	
+				#then match model to observed epochs
+				#(this accounts for observation gaps
+				models = np.array([model[epoch] for \
+					model, epoch in zip(models, epochs)])
+				if debug:
+					print(theta)
+					pu.debug_plots(self.nplanets,
+						data, epochs, errs, models)
+			except IndexError as e:
 			#happens when ttvfast returns fewer transit events
 			#over the integration domain than the data contain
-			return -1e300
-		
+				return -1e300
+		else:
+			return -1e300	
 		#then calculate log likelihood sum
 		log_like = 0
 		for model, datum, err in zip(models, data, errs):
@@ -225,7 +275,7 @@ class TTVSystem:
 		return filename
 
 	def retrieve(self, retriever = 'DynamicNestedSampler', dlogz = 0.01, 
-		nlive = 1000, wt_kwargs = {'pfrac': 1.0},
+		nlive = 1000, wt_kwargs = None,
 		**dynesty_kwargs):
 		if retriever == 'NestedSampler':
 			fn = dynesty.NestedSampler
