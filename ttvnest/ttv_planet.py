@@ -1,5 +1,4 @@
 import numpy as np
-from . import forward_model as fm
 from . import plot_utils as pu
 from .constants import *
 import dynesty
