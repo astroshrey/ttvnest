@@ -7,12 +7,14 @@ from dynesty import utils as dyfunc
 
 class TTVPlanet:
 	def __init__(self, ttv = None, ttv_err = None, epochs = None,
-		mass_prior = ('Uniform', 0., 100.), 
+		mass_prior = ('Uniform', 0., 100.),
 		period_prior = ('Uniform', 1., 100.),
-		ecosw_prior = ('Normal', 0., 0.1), 
-		esinw_prior = ('Normal', 0., 0.1),
+		h_prime_prior = ('Uniform', -1., 1.), 
+		k_prime_prior = ('Uniform', -1., 1.),
 		inc_prior = ('Fixed', 90.),
-		longnode_prior = ('Fixed', 0.)):
+		longnode_prior = ('Fixed', 0.),
+		t0_prior = None,
+		meananom_prior = ('Periodic', 0., 360.)):
 		"""
 		Docstring
 		"""
@@ -29,16 +31,21 @@ class TTVPlanet:
 
 		self.prior_dict = {'mass_prior': mass_prior,
 				'period_prior': period_prior,
-				'ecosw_prior': ecosw_prior,
-				'esinw_prior': esinw_prior,
+				'h_prime_prior': h_prime_prior,
+				'k_prime_prior': k_prime_prior,
 				'inc_prior': inc_prior,
 				'longnode_prior': longnode_prior}
 		if self.transiting:
-			self.prior_dict['t0_prior'] = ('Normal', self.ttv[0],
-					self.ttv_err[0])
+			if t0_prior is None:
+				first_transit = self.ttv[0] - \
+					self.epochs[0]*period_prior[1]
+				self.prior_dict['t0_prior'] = ('Uniform',
+					first_transit - 100*self.ttv_err[0],
+					first_transit + 100*self.ttv_err[0])
+			else:
+				self.prior_dict['t0_prior'] = t0_prior
 		else:
-			self.prior_dict['meananom_prior'] = ('Periodic', 0.,
-					360.)
+			self.prior_dict['meananom_prior'] = meananom_prior
 
 
 	def validate_input(self, ttv, ttv_err, epochs):
