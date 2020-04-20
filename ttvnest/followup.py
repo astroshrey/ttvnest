@@ -1,8 +1,6 @@
 import numpy as np
 from dynesty import utils as dyfunc
 from scipy.ndimage import gaussian_filter as norm_kde
-from . import forward_model as fm
-from . import retrieval as ret
 from .constants import *
 import matplotlib.pyplot as plt
 import scipy
