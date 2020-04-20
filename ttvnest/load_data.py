@@ -25,16 +25,3 @@ def get_data(koi_star, nplanets, datatable = 'J/ApJS/217/16/table2'):
 	print("Data retrieved!")
 	return np.array(obs), np.array(errs), np.array(epochs)
 
-def get_data_from_file(nplanets, filename):
-	obs = []
-	errs = []
-	data = ascii.read(filename)
-	print("Reading data from file...")
-	for planet_number in range(1, nplanets + 1):
-		cur_dat = data[data['Planet'] == planet_number]
-		observed = np.array(cur_dat['Time'], dtype = float)
-		err = np.array(cur_dat['Error'], dtype = float)
-		obs.append(observed)
-		errs.append(err)
-	print("Data retrieved!")
-	return np.array(obs), np.array(errs)
