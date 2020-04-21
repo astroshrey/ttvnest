@@ -14,39 +14,44 @@ class TTVSystem:
 		self.start_time = start_time
 		self.transiting = [pl.transiting for pl in self.planets]
 
-		self.data = np.array([p.ttv for p in self.planets \
-			if p.transiting])
-		self.errs = np.array([p.ttv_err for p in self.planets \
-			if p.transiting])
-		self.epochs = np.array([p.epochs for p in self.planets \
-			if p.transiting])
-		self.all_priors = self.get_all_priors()
-	
 		if dt is not None:
 			self.dt = dt
 		else:
+			self.all_priors = self.get_all_priors()
 			self.dt = self.calculate_dt_from_priors()
 
-
+		#internal timekeeping
+		self.data = np.array([p.ttv for p in self.planets \
+			if p.transiting])
 		alltimes = np.concatenate(self.data).ravel()
 		mintime = np.floor(min(alltimes)) - buffersize
 		maxtime = np.ceil(max(alltimes)) + buffersize
 
 		if start_time is not None:
+			#external timekeeping
 			self.start_time = start_time
 		else:
+			#internal timekeeping
 			self.start_time = mintime
-		self.reference_times(mintime)
-
 		if sim_length is not None:
 			#external timekeeping
 			self.sim_length = sim_length
 		else:
 			#internal timekeeping
 			self.sim_length = maxtime - mintime
+
+		self.reference_times(self.start_time)
 		if verbose:
 			self.print_timekeeping_standards()
 
+		self.data = np.array([p.ttv for p in self.planets \
+			if p.transiting])
+		self.errs = np.array([p.ttv_err for p in self.planets \
+			if p.transiting])
+		self.epochs = np.array([p.epochs for p in self.planets \
+			if p.transiting])
+
+		self.all_priors = self.get_all_priors()
 		self.priors_for_fit = self.get_non_fixed_priors()
 		self.periodic = self.get_periodic_indices()
 		self.fit_param_names = self.get_fit_param_names()
@@ -55,18 +60,26 @@ class TTVSystem:
 		self.results = None
 
 	def reference_times(self, reftime):
-		#reference all data to reftime
-		self.data -= reftime
-		#reference all T0 priors to reftime
-		for planet in range(self.nplanets):
-			if self.transiting[planet]:
-				#only transiting planets have T0 prior
-				T0_index = planet*7+6
-				prior = list(self.all_priors[T0_index])
-				prior[2] -= reftime
-				if prior[1] == 'Uniform':
-					prior[3] -= reftime
-				self.all_priors[T0_index] = tuple(prior)
+		for planet in self.planets:
+			if planet.transiting:
+				#move transit times back to reftime
+				planet.ttv -= reftime
+				
+				#if we move back by more than a transit
+				#we need to adjust the epochs
+				ntransits = np.floor(
+					reftime / planet.avg_period,
+					dtype = 'int')
+				planet.epochs -= ntransits
+
+				#reset the T0 prior for transiting planets
+				old_prior = list(planet.prior_dict['t0_prior'])
+				old_prior[1] -= reftime
+				if old_prior[0] == 'Uniform':
+					old_prior[2] -= reftime
+
+                                planet.prior_dict['t0_prior'] = tuple(old_prior)
+
 		return None 
 		
 
@@ -219,8 +232,7 @@ class TTVSystem:
 					model, epoch in zip(models, epochs)])
 				if debug:
 					print(theta)
-					pu.debug_plots(self.nplanets,
-						data, epochs, errs, models)
+					pu.debug_plots(self, models)
 			except IndexError as e:
 			#happens when ttvfast returns fewer transit events
 			#over the integration domain than the data contain
