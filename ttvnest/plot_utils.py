@@ -39,14 +39,20 @@ def dynesty_plots(system, truthvals = None, outname = None):
 		plt.close('all')
 
 	#runplot
-	plt.figure(figsize = (20, 20))
-	rfig, raxes = dyplot.runplot(system.results)
-	if outname == None:
-		plt.show()
-	else:
-		plt.savefig(names[2])
+	try:
+		plt.figure(figsize = (20, 20))
+		rfig, raxes = dyplot.runplot(system.results)
+		if outname == None:
+			plt.show()
+		else:
+			plt.savefig(names[2])
+			plt.close('all')
+			return names
+	except ValueError:
 		plt.close('all')
-		return names
+		print("Axis limits error on runplot; internal to dynesty")
+		pass
+
 	return None
 
 def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
@@ -73,7 +79,7 @@ def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
 		rand_models = system.forward_model(samp)
 		unc_models.append(rand_models)
 
-	for planet, model in zip(system.planets, models):
+	for i, planet in enumerate(system.planets):
 		if planet.transiting:
 			datum = planet.ttv
 			err = planet.ttv_err
