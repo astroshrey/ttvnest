@@ -65,20 +65,28 @@ class TTVSystem:
 				#move transit times back to reftime
 				planet.ttv -= reftime
 				
-				#if we move back by more than a transit
-				#we need to adjust the epochs
-				ntransits = np.floor(
-					reftime / planet.avg_period,
-					dtype = 'int')
+				#adjust the epochs if necessary
+				new_t0 = planet.avg_t0 - reftime
+				ntransits = 0
+				while new_t0 < 0:
+					new_t0 += planet.avg_period
+					ntransits += 1
 				planet.epochs -= ntransits
+
+				#recalculate the mean ephemerides
+				planet.mean_ephem = planet.get_trend(planet.ttv,
+					planet.epochs, planet.ttv_err)
+				planet.avg_period = planet.mean_ephem.c[0]
+				planet.avg_t0 = planet.mean_ephem.c[0]
 
 				#reset the T0 prior for transiting planets
 				old_prior = list(planet.prior_dict['t0_prior'])
-				old_prior[1] -= reftime
+				old_prior[1] -= (reftime - \
+					ntransits*planet.avg_period)
 				if old_prior[0] == 'Uniform':
-					old_prior[2] -= reftime
-
-                                planet.prior_dict['t0_prior'] = tuple(old_prior)
+					old_prior[2] -= (reftime - \
+						ntransits * planet.avg_period)
+				planet.prior_dict['t0_prior'] = tuple(old_prior)
 
 		return None 
 		

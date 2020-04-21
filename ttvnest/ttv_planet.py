@@ -23,14 +23,24 @@ class TTVPlanet:
 			self.ttv = np.array(ttv)
 			self.ttv_err = np.array(ttv_err)
 			self.epochs = np.array(epochs)
-			self.mean_ephem = self.get_trend(ttv, epochs, ttv_err)
-			self.avg_period = mean_ephem.c[0]
+			try:
+				self.mean_ephem = self.get_trend(self.ttv, 
+					self.epochs, self.ttv_err)
+				self.avg_period = self.mean_ephem.c[0]
+				self.avg_t0 = self.mean_ephem.c[1]
+			except np.linalg.LinAlgError as e:
+				print("Can't get mean ephemerides")
+				self.mean_ephem = None
+				self.avg_period = None
+				self.avg_t0 = None
+				pass
 		else:
 			self.ttv = None
 			self.ttv_err = None
 			self.epochs = None
 			self.mean_ephem = None
 			self.avg_period = None
+			self.avg_t0 = None
 
 		self.prior_dict = {'mass_prior': mass_prior,
 				'period_prior': period_prior,
@@ -40,20 +50,20 @@ class TTVPlanet:
 				'longnode_prior': longnode_prior}
 		if self.transiting:
 			if t0_prior is None:
-				first_transit = self.ttv[0] - \
+				self.avg_t0 = self.ttv[0] - \
 					self.epochs[0]*self.avg_period
 				self.prior_dict['t0_prior'] = ('Uniform',
-					first_transit - 100*self.ttv_err[0],
-					first_transit + 100*self.ttv_err[0])
+					self.avg_t0 - 100*self.ttv_err[0],
+					self.avg_t0 + 100*self.ttv_err[0])
 			else:
 				self.prior_dict['t0_prior'] = t0_prior
 		else:
 			self.prior_dict['meananom_prior'] = meananom_prior
 
-	def get_trend(self data, obsind, errs):
+	def get_trend(self, data, obsind, errs):
 		z = np.polyfit(obsind, data, 1, w = 1/errs)
 		p = np.poly1d(z)
-	return p
+		return p
 
 	def validate_input(self, ttv, ttv_err, epochs):
 		if ttv is None and ttv_err is None and epochs is None:
