@@ -87,9 +87,20 @@ class TTVSystem:
 					old_prior[2] -= (reftime - \
 						ntransits * planet.avg_period)
 				planet.prior_dict['t0_prior'] = tuple(old_prior)
-
-		return None 
 		
+		self.validate_epochs()
+		return None 
+
+	def validate_epochs(self):
+		for i, planet in enumerate(self.planets):
+			first_transit = planet.ttv[0] - \
+				planet.epochs[0]*planet.avg_period
+			if first_transit - planet.avg_period >= 0:
+				raise UserWarning("The epoch array is " + 
+					f'incorrect for planet {i+1}: first '+
+					"transit was calculated to be " + 
+					f'{first_transit}, but this is ' +
+					'at least the second transit')		
 
 	def print_timekeeping_standards(self):
 		print("Simulation start/reference time: ", self.start_time)

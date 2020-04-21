@@ -76,6 +76,8 @@ class TTVPlanet:
 			if l1 == l2 == l3:
 				return True
 			else:
-				raise ValueError(f'Shape mismatch between lengths of TTVs {l1}, TTV errors {l2}, and epochs {l3}')
+				raise ValueError('Shape mismatch between ' +
+					f'lengths of TTVs {l1}, ' +
+					f'TTV errors {l2}, and epochs {l3}')
 
 		raise ValueError("Must specify TTVs, errors, and epochs!")
