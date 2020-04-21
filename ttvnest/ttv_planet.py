@@ -23,10 +23,14 @@ class TTVPlanet:
 			self.ttv = np.array(ttv)
 			self.ttv_err = np.array(ttv_err)
 			self.epochs = np.array(epochs)
+			self.mean_ephem = self.get_trend(ttv, epochs, ttv_err)
+			self.avg_period = mean_ephem.c[0]
 		else:
 			self.ttv = None
 			self.ttv_err = None
-			self.epochs = None	
+			self.epochs = None
+			self.mean_ephem = None
+			self.avg_period = None
 
 		self.prior_dict = {'mass_prior': mass_prior,
 				'period_prior': period_prior,
@@ -37,7 +41,7 @@ class TTVPlanet:
 		if self.transiting:
 			if t0_prior is None:
 				first_transit = self.ttv[0] - \
-					self.epochs[0]*period_prior[1]
+					self.epochs[0]*self.avg_period
 				self.prior_dict['t0_prior'] = ('Uniform',
 					first_transit - 100*self.ttv_err[0],
 					first_transit + 100*self.ttv_err[0])
@@ -46,6 +50,10 @@ class TTVPlanet:
 		else:
 			self.prior_dict['meananom_prior'] = meananom_prior
 
+	def get_trend(self data, obsind, errs):
+		z = np.polyfit(obsind, data, 1, w = 1/errs)
+		p = np.poly1d(z)
+	return p
 
 	def validate_input(self, ttv, ttv_err, epochs):
 		if ttv is None and ttv_err is None and epochs is None:

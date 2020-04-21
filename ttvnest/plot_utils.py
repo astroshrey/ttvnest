@@ -48,8 +48,6 @@ def dynesty_plots(system, truthvals = None, outname = None):
 		plt.close('all')
 		return names
 	return None
-		
-
 
 def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
 	outname = None):
@@ -75,16 +73,16 @@ def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
 		rand_models = system.forward_model(samp)
 		unc_models.append(rand_models)
 
-	for i, transiting in enumerate(system.transiting):
-		if transiting:
-			datum = system.data[i]
-			err = system.errs[i]
-			epoch = system.epochs[i]
+	for planet, model in zip(system.planets, models):
+		if planet.transiting:
+			datum = planet.ttv
+			err = planet.ttv_err
+			epoch = planet.epochs
 			model = models[i]
+			mean_ephem = planet.mean_ephem
 
-			datum_trend = get_trend(datum, epoch, err)
-			ttv_datum = datum - datum_trend(epoch)
-			ttv_model = model - datum_trend(np.arange(len(model)))
+			ttv_datum = datum - mean_ephem(epoch)
+			ttv_model = model - mean_ephem(np.arange(len(model)))
 
 			plt.figure(figsize = (12, 8))
 			plt.errorbar(epoch, ttv_datum*24.*60., 
@@ -95,7 +93,7 @@ def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
 
 			for unc_mod in unc_models:
 				unc_model = unc_mod[i]
-				unc_ttv_model = unc_model - datum_trend(
+				unc_ttv_model = unc_model - mean_ephem(
 					np.arange(len(unc_model)))
 				plt.plot(np.arange(len(unc_model)),
 					unc_ttv_model*24.*60., color = 'blue',
@@ -108,14 +106,9 @@ def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
 				plt.show()
 				plt.close('all')
 			else:
-				plt.savefig(outname + f'_{i}.png')
+				plt.savefig(outname + f'_{i+1}.png')
 				plt.close('all')
 	return None
-
-def get_trend(data, obsind, errs, get_uncertainty = False):
-	z = np.polyfit(obsind, data, 1, w = 1/errs)
-	p = np.poly1d(z)
-	return p
 
 def plot_apsidal_alignment(results, nplanets = 2, bins = 500):
 	if nplanets != 2:
@@ -180,32 +173,38 @@ def plot_information_timeseries(all_divs, obs_epoch = None):
 	return None
 
 def plot_ttv_data(system):
-	data = system.data
-	errs = system.errs
-	epochs = system.epochs
+	for planet in system.planets:
+		if planet.transiting:
+			dat = planet.ttv
+			ep = planet.epochs
+			err = planet.ttv_err
+			mean_ephem = planet.mean_ephem
 
-	for datum, err, epoch in zip(data, errs, epochs):
-		plt.figure(figsize = (12, 8))
-		datum_trend = get_trend(datum, epoch, err)
-		ttv_datum = datum - datum_trend(epoch)
-		plt.errorbar(epoch, ttv_datum*24.*60., yerr = err*24.*60.,
-			linestyle = '', color = 'k', marker = 'o', ms = 4,
-			zorder = 1)
-		plt.xlabel("Epoch")
-		plt.ylabel("TTV [min]")
-		plt.show()
-		plt.close('all')
-	return None
+			plt.figure(figsize = (12, 8))
+			ttv_data = dat - mean_ephem(ep)
+			plt.errorbar(ep, ttv_data*24.*60., yerr = err*24.*60.,
+				linestyle = '', color = 'k', marker = 'o', 
+				ms = 4, zorder = 1)
+			plt.xlabel("Epoch")
+			plt.ylabel("TTV [min]")
+			plt.show()
+			plt.close('all')		
 
-def debug_plots(nplanets, data, epochs, errs, models):
-	for i in range(nplanets):
-		datum_trend = get_trend(data[i], epochs[i], errs[i])
-		ttv_model = models[i] - datum_trend(epochs[i])
-		plt.plot(epochs[i], ttv_model)
-		plt.plot(epochs[i], data[i] - datum_trend(epochs[i]), 'ko')
+def debug_plots(system, models):
+	for planet, model in zip(system.planets, models):
+		data = planet.ttv
+		epochs = planet.epochs
+		errs = planet.ttv_errs
+		mean_ephem = planet.mean_ephem
+		
+		ttv_data = data - mean_ephem(epochs)
+		ttv_model = model - mean_ephem(epochs)
+
+		plt.plot(epochs, ttv_model)
+		plt.plot(epochs, ttv_data, 'ko')
 		plt.xlabel("Epoch")
 		plt.ylabel("TTV [day]")
-		print(data[i], models[i])
-		print(datum_trend(epochs[i]))
+		print(data, models)
+		print(mean_ephem(epochs))
 		plt.show()
 	return None
