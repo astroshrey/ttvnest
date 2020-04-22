@@ -146,36 +146,48 @@ def plot_apsidal_alignment(results, nplanets = 2, bins = 500):
 	plt.show()
 	return None
 
-def plot_information_timeseries(all_divs, obs_epoch = None):
-	plt.figure(figsize = (12, 8))
-	percentiles = np.percentile(all_divs, [2.5, 50, 97.5], axis = 1)
-	plt.plot(np.arange(all_divs.shape[0]), percentiles[1], 
-		c = 'cornflowerblue', linestyle = '-')
+def plot_information_timeseries(all_divs, obs_epoch = None, outname = None):
+	factor_two_redux = 1-3/(8*np.log(2))
+	ep, _, nplanets = all_divs.shape
+	epochs = np.arange(ep)
+	xmin = epochs[0]
+	xmax = epochs[-1]
+	for i in range(nplanets):
+		cur_divs = all_divs[:,:,i]
+		ymin = 1e-2
+		ymax = max(max(cur_divs.flatten()), factor_two_redux)*1.2
+		plt.figure(figsize = (12, 8))
+		percentiles = np.percentile(cur_divs, [2.5, 50, 97.5], axis = 1)
+		plt.plot(epochs, percentiles[1], 
+			c = 'cornflowerblue', linestyle = '-')
 
-	plt.fill_between(np.arange(all_divs.shape[0]), percentiles[1], 
-		percentiles[0], color = 'cornflowerblue', alpha = 0.2, 
-		linewidth = 0.)
+		plt.fill_between(epochs, percentiles[1], 
+			percentiles[0], color = 'cornflowerblue', alpha = 0.2, 
+			linewidth = 0.)
 
-	plt.fill_between(np.arange(all_divs.shape[0]), percentiles[1],
-		percentiles[2], color = 'cornflowerblue', alpha = 0.2,
-		linewidth = 0.)
+		plt.fill_between(epochs, percentiles[1],
+			percentiles[2], color = 'cornflowerblue', alpha = 0.2,
+			linewidth = 0.)
 
-	plt.hlines([1-3/(8*np.log(2))], 0, all_divs.shape[0], colors = 'r',
-		linestyles = '--', alpha = 0.4, 
-		label = 'Approx. 2x reduction in uncertainty')
+		plt.hlines([factor_two_redux], xmin, xmax, colors = 'r',
+			linestyles = '--', alpha = 0.4, 
+			label = 'Approx. 2x reduction in uncertainty')
 
-	if obs_epoch is not None:
-		plt.vlines([obs_epoch], 0.01, max(all_divs.flatten())*1.2,
-			colors = 'b', linestyles = '--', alpha = 0.4,
-			label = 'Epoch of observation')
-
-	plt.ylim(0.01, max(all_divs.flatten())*1.2)
-	plt.xlim(0, all_divs.shape[0])
-	plt.yscale('log')
-	plt.xlabel("Epoch")
-	plt.ylabel("Expected Information Gain (bits)")
-	plt.legend(loc = 'best')
-	plt.show()
+		if obs_epoch is not None:
+			plt.vlines([obs_epoch], ymin, ymax, colors = 'b', 
+				linestyles = '--', alpha = 0.4,
+				label = 'Epoch of observation')
+		plt.xlim(xmin, xmax)
+		plt.ylim(ymin, ymax)
+		plt.yscale('log')
+		plt.xlabel("Epoch")
+		plt.ylabel(f'Expected Information Gain for Planet {i+1} (bits)')
+		plt.legend(loc = 'best')
+		if outname == None:
+			plt.show()
+		else:
+			plt.savefig(outname + f'_{i+1}.png')
+			plt.close('all')
 	return None
 
 def plot_ttv_data(system):

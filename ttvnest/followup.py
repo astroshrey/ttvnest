@@ -2,81 +2,66 @@ import numpy as np
 from dynesty import utils as dyfunc
 from scipy.ndimage import gaussian_filter as norm_kde
 from .constants import *
+from tqdm import tqdm
+from copy import deepcopy
 import matplotlib.pyplot as plt
 import scipy
 
-def calculate_information_timeseries(results, measurement_uncertainty,
-	measured_planet, stellarmass = 1, dt = 0.1, sim_length = 7305., 
-	nsamps = 100, start_time = tkep):
+def calculate_information_timeseries(orig_system, measurement_uncertainty,
+	measured_planet, sim_length = 7305., niter = 100, start_time = tkep):
 
+	system = deepcopy(orig_system)
+	measured_planet -= 1 #user interface is 1-indexed, Python is 0-indexed
+	system.sim_length = sim_length
+	names = system.fit_param_names
+	mass_inds = np.array([i for i, name in enumerate(names) if 'M' in name])
+
+	nplanets = system.nplanets
+	results = system.results
 	samples = results.samples
-	nplanets = int(samples.shape[1]/5)
 	weights = np.exp(results.logwt - results.logz[-1])
 
 	#first resmple the posterior to be equal
 	samples_equal = dyfunc.resample_equal(samples, weights)
 	#then need to propogate all models forward
-	print("Propogating all models in posterior forward to time {0}...".format(sim_length))
-	models_all = propogate_all_models(samples_equal, nplanets, 
-		stellarmass, dt, start_time, sim_length)
+	print("Propogating all models in posterior forward" +
+		" to time {0}...".format(sim_length))
+	models_all = propogate_all_models(system, samples_equal)
 	#finally calculate the distribution of information gains at each time
-	print("Calculating the Kullback-Leibler Divergence distribution at each epoch...")
+	print("Calculating the Kullback-Leibler Divergence" + 
+		" distribution at each epoch...")
 	all_divs = calculate_dkl_timeseries(models_all, samples_equal,
-		measured_planet, measurement_uncertainty, nsamps)
+		measured_planet, measurement_uncertainty, niter,
+		nplanets, mass_inds)
 	return all_divs
 
-def propogate_all_models(samples_equal, nplanets, stellarmass, dt, 
-	start_time, sim_length):
+def propogate_all_models(system, samples_equal):
 	models_all = []
 	n_samples = samples_equal.shape[0]
-	old_perc_done = 0
-	for i in range(n_samples):
-		theta = samples_equal[i,:]
-		paramv = [theta[i*5: (i + 1)*5] for i in range(nplanets)]
-		models = fm.run_simulation(stellarmass, dt, start_time,
-			sim_length, *paramv)
+	for i in tqdm(range(n_samples)):
+		models = system.forward_model(samples_equal[i,:])	
 		models_all.append(models)
-
-		new_perc_done = int(100*i/n_samples)
-		if old_perc_done != new_perc_done:
-			old_perc_done = new_perc_done	
-			print(str(new_perc_done)+'% complete')
-	
 	return models_all
 
-
-def get_obs_epoch(my_obs_time, results, measured_planet, 
-	stellarmass = 1., dt = 0.1, start_time = tkep, sim_length = 7305.):
-	samps = results.samples
-	nplanets = int(samps.shape[1]/5)
-	ind = np.argmax(results.logl)
-	best_result = samps[ind]
-	paramv = [best_result[i*5:(i+1)*5] for i in range(nplanets)]
-	models = fm.run_simulation(stellarmass, dt, start_time, 
-		sim_length, *paramv)
-	epochs = [ret.get_inds(model, [my_obs_time]) for model in models]
-	return epochs[measured_planet][0]
-
 def calculate_dkl_timeseries(models_all, samples_equal, measured_planet, 
-	measurement_uncertainty, nsamps):
+	measurement_uncertainty, niter, nplanets, mass_inds):
 	model_len = len(models_all[0][measured_planet])
-	all_divs = np.zeros([model_len, nsamps])
-	old_perc_done = 0
+	all_divs = np.zeros([model_len, niter, len(mass_inds)])
 	#for each time, calculate and save the dkl distribution
-	for i in range(model_len):
-		all_divs[i,:] = get_dkl_distribution(i, models_all, 
+	for epoch in tqdm(range(model_len)):
+		all_divs[epoch,:,:] = get_dkl_distribution(epoch, models_all, 
 			samples_equal, measured_planet, measurement_uncertainty,
-			nsamps)
-		#progress bar
-		new_perc_done = int(100*i/model_len)
-		if old_perc_done != new_perc_done:
-			old_perc_done = new_perc_done	
-			print(str(new_perc_done)+'% complete')
+			niter, mass_inds)
 	return all_divs
 
+def get_prob(test, true, unc):
+	return 1 - scipy.stats.chi2._cdf((test - true)**2/(unc**2), 1)
+prob = np.vectorize(get_prob) 
+#vectorizing makes it much faster to compute chi2 probabilities for an array
+
 def get_dkl_distribution(epoch, models_all, samples_equal, measured_planet,
-	measurement_uncertainty, nsamps):
-	dkls = np.zeros(nsamps)
+	measurement_uncertainty, nsamps, mass_inds):
+	dkls = np.zeros([nsamps, len(mass_inds)])
 	for j in range(nsamps):
 		#pick random sample to be "true"
 		true_ind = np.random.randint(0, len(models_all))
@@ -85,7 +70,7 @@ def get_dkl_distribution(epoch, models_all, samples_equal, measured_planet,
 		#get probabilities for all models given the "true" random sample
 		test_times = np.array([models_all[k][measured_planet][epoch] \
 			for k in range(len(models_all))])
-		probs = gp(test_times, true_val, measurement_uncertainty)
+		probs = prob(test_times, true_val, measurement_uncertainty)
 	
 		#sample the models based on the probabilities above
 		rands = np.random.random(len(models_all))
@@ -93,20 +78,16 @@ def get_dkl_distribution(epoch, models_all, samples_equal, measured_planet,
 
 		#finally calculate the Kullback-Leibler divergence on 
 		#KDEs of the old and new distributions
-		dkls[j] = D_KL(*KDEs(samples_equal[:,0],
-			new_samples_equal[:,0], plot = False))
-		#TODO: CHANGE IND 0 ABOVE TO WHATEVER INDEX OR MERIT USER WANTS
+		for planet, ind in enumerate(mass_inds):
+			dkls[j][planet] = D_KL(*KDEs(samples_equal[:,ind], 
+				new_samples_equal[:,ind]))
 	return dkls
-
-def get_prob(test, true, unc):
-	return 1 - scipy.stats.chi2._cdf((test - true)**2/(unc**2), 1)
-gp = np.vectorize(get_prob) 
-#vectorizing makes it much faster to compute chi2 probabilities for an array
 
 def KDEs(x_old, x_new, bins = 500, plot = False, color1 = 'gray',
 	color2 = 'dodgerblue'):
 
 	#set the bins and ranges based on the pre-rejection sampled data
+	#spans and quantile defs are taken from dynesty
 	span = 0.999999426697
 	q = [0.5 - 0.5 * span, 0.5 + 0.5 * span]
 	ranges = dyfunc.quantile(x_old, q)
