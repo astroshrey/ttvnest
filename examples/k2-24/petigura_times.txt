@@ -1,0 +1,17 @@
+Table 1 
+Transit Times
+
+
+Instrument	Planet	i	T_c	$\sigma ({T}_{c})$	
+			days	days	
+K2	b	0	2072.7954	0.0011	
+K2	c	0	2082.6248	0.0006	
+K2	b	1	2093.6806	0.0013	
+K2	b	2	2114.5654	0.0009	
+K2	c	1	2124.9879	0.0006	
+K2	b	3	2135.4505	0.0012	
+Spitzer	b	20	2490.6161	0.0011	
+Spitzer	c	10	2506.0002	0.0014	
+Spitzer	c	15	2717.5074	0.0015	
+Spitzer	b	31	2720.5049	0.0016	
+Note. Following a convention from the Kepler mission, times are given in ${\mathrm{BJD}}_{\mathrm{TBD}}\mbox{--}2454833$.
