@@ -55,6 +55,65 @@ def dynesty_plots(system, truthvals = None, outname = None):
 
 	return None
 
+def plot_linear_fit_results(system, uncertainty_curves = 0, sim_length = 2000,
+	outname = None):
+	dresults = system.linear_fit_results
+	samples = dresults.samples
+	weights = np.exp(dresults.logwt - dresults.logz[-1])
+	ind = np.argmax(dresults.logl)
+	max_like_res = dresults.samples[ind]
+
+	samples_equal = dyfunc.resample_equal(samples, weights)
+	inds = np.arange(samples_equal.shape[0])
+	pick = np.random.choice(inds, uncertainty_curves, replace=False)
+	random_samples = samples_equal[pick,:]
+
+	#data and median result
+	system.sim_length = sim_length
+	models = system.linear_forward_model(max_like_res)
+
+	unc_models = []
+	for samp in random_samples:
+		rand_models = system.linear_forward_model(samp)
+		unc_models.append(rand_models)
+
+	for i, planet in enumerate(system.planets):
+		if planet.transiting:
+			datum = planet.ttv
+			err = planet.ttv_err
+			epoch = planet.epochs
+			model = models[i]
+			mean_ephem = planet.mean_ephem
+
+			ttv_datum = datum - mean_ephem(epoch)
+			ttv_model = model - mean_ephem(epoch)
+
+			plt.figure(figsize = (12, 8))
+			plt.errorbar(epoch, ttv_datum*24.*60., 
+				yerr = err*24.*60., linestyle = '', 
+				color = 'k', marker = 'o', ms = 4, zorder = 1)
+			plt.plot(epoch, ttv_model*24.*60.,
+				color = 'blue', linewidth = 1, zorder = 1000)
+
+			for unc_mod in unc_models:
+				unc_model = unc_mod[i]
+				unc_ttv_model = unc_model - mean_ephem(
+					epoch)
+				plt.plot(epoch,
+					unc_ttv_model*24.*60., color = 'blue',
+					linewidth = 0.5, alpha = 0.05,
+					zorder = 10)
+				plt.xlim(min(epoch)-1, max(epoch) + 1)
+			plt.xlabel("Epoch")
+			plt.ylabel("TTV [min]")
+			if outname is None:
+				plt.show()
+				plt.close('all')
+			else:
+				plt.savefig(outname + f'_{i+1}_linearfit.png')
+				plt.close('all')
+	return None
+
 def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
 	outname = None):
 	

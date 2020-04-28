@@ -59,6 +59,9 @@ class TTVSystem:
 		self.ndim = len(self.fit_param_names)
 		self.results = None
 
+		self.linear_fit_priors = self.get_linear_fit_priors()
+		self.linear_fit_results = None
+
 	def reference_times(self, reftime):
 		for planet in self.planets:
 			if planet.transiting:
@@ -330,10 +333,83 @@ class TTVSystem:
 
 		run_kw = sampler.run_nested.__code__.co_varnames
 		run_kwargs = filter_by_key(run_kw)
-		if retriever == 'NestedSampler':
-			sampler.run_nested(**run_kwargs)
-		else:
-			sampler.run_nested(**run_kwargs)
+		sampler.run_nested(**run_kwargs)
 
 		self.results = sampler.results
 		return self.results
+
+
+############## linear model below ################################
+
+	def linear_forward_model(self, theta):
+		thetas = np.split(theta, self.nplanets)
+		timing_arrs = []
+		for t, ep in zip(thetas, self.epochs):
+			m, b = t
+			timing_arrs.append(m*ep + b)
+		return np.array(timing_arrs)
+
+	def linear_model_log_like(self, theta, data, errs, epochs):
+		# calculate the model
+		models = self.linear_forward_model(theta)
+		
+		#then calculate log likelihood sum
+		log_like = 0
+		for model, datum, err in zip(models, data, errs):
+			residsq = (model - datum)**2 / err**2
+			log_like -= 0.5 * np.sum(residsq + np.log(
+				2*np.pi*err**2))
+	
+		if not np.isfinite(log_like):
+			return -1e300
+		return log_like
+
+	def get_linear_fit_priors(self):
+		all_priors = []
+		for i, planet in enumerate(self.planets):
+			if planet.transiting:
+				pl = planet.prior_dict
+				all_priors += [(i,) + pl['period_prior'],
+					 (i,) + pl['t0_prior']]
+		return all_priors
+
+	def linear_ptform(self, u):
+		def unif(u, lo, up):
+			return lo + u*(up - lo)
+	
+		def per(u, lo, up):
+			return lo + (u % 1.)*(up - lo)
+
+		transform_dict = {'Uniform': unif,
+				'Normal': ss.norm.ppf,
+				'Periodic': per}
+
+		x = np.array(u) #copy unit cube
+		for i, prior in enumerate(self.linear_fit_priors):
+			f_i = transform_dict[prior[1]]
+			x[i] = f_i(u[i], *prior[2:])
+
+		return x	
+
+	def linear_model_retrieve(self, **dynesty_kwargs):
+		fn = dynesty.NestedSampler
+		samp_kw = fn.__code__.co_varnames
+		filter_by_key = lambda keys: {x: dynesty_kwargs[x] for \
+			x in keys if x in dynesty_kwargs}
+		samp_kwargs = filter_by_key(samp_kw)
+		ntransiting = np.sum(self.transiting)
+		ndim = ntransiting*2
+		
+		sampler = fn(self.linear_model_log_like, self.linear_ptform,
+			ndim, logl_args = (self.data, 
+			self.errs, self.epochs), **samp_kwargs)
+
+		run_kw = sampler.run_nested.__code__.co_varnames
+		run_kwargs = filter_by_key(run_kw)
+		sampler.run_nested(**run_kwargs)
+
+		self.linear_fit_results = sampler.results
+		return self.linear_fit_results
+
+
+
