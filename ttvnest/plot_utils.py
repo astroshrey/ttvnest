@@ -4,6 +4,7 @@ from dynesty import plotting as dyplot
 from dynesty import utils as dyfunc
 from scipy.ndimage import gaussian_filter as norm_kde
 from .constants import *
+from . import rebound_backend as rb
 import matplotlib
 import random
 matplotlib.rcParams['mathtext.fontset'] = 'cm'
@@ -203,6 +204,37 @@ def plot_apsidal_alignment(results, nplanets = 2, bins = 500):
 	plt.fill_between(x1, y1, color='b', alpha = 0.5)
 	plt.xlabel(r'$\omega_2 - \omega_1$ [$\degree$]')
 	plt.show()
+	return None
+
+def plot_resonant_angle(system, resonance_ratio_string, sim_len_yr,
+	outname = None, downsample = 1):
+	plt.figure(figsize = (12, 8))
+	matplotlib.rcParams['font.size'] = 20
+	results = system.results
+	ind = np.argmax(results.logl)
+	max_like_theta = results.samples[ind]
+
+	num, denom = resonance_ratio_string.split(':')
+	p = int(denom)
+	q = int(num) - p #order of resonance
+
+	times, angles = rb.track_resonant_angle(
+		system, max_like_theta, p, q, sim_len_yr)
+	times = times[::downsample]
+	angles = angles[::downsample]
+
+	val1 = p+q if p+q > 1 else ''
+	val2 = p if p > 1 else ''
+	val3 = q if q > 1 else ''
+	plt.plot(times, (angles*180./np.pi) % 360., c = 'b')
+	plt.xlabel('Time [yr]')
+	plt.ylabel(r'${0}\lambda_2 - {1}\lambda_1 - {2}\varpi_2$'.format(
+		val1, val2, val3))
+	if outname == None:
+		plt.show()
+	else:
+		plt.savefig(outname + f'_res_angle.png')
+		plt.close('all')
 	return None
 
 def plot_information_timeseries(all_divs, obs_epoch = None, outname = None):
