@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from itertools import combinations
 from dynesty import plotting as dyplot
 from dynesty import utils as dyfunc
 from scipy.ndimage import gaussian_filter as norm_kde
@@ -12,11 +13,13 @@ matplotlib.rcParams['font.family'] = 'STIXGeneral'
 matplotlib.rcParams['font.size'] = 20
 
 def dynesty_plots(system, truthvals = None, outname = None):
+	if system.results == None:
+		raise ValueError("No retrieval found in your system object!")
+
 	if outname is not None:
 		names = [outname + '_cornerplot.png',
 			outname + '_traceplot.png',
 			outname + '_runplot.png']
-
 	#cornerplot
 	plt.figure(figsize = (20, 20))
 	cfig, caxes = dyplot.cornerplot(system.results, color = 'blue',
@@ -58,6 +61,10 @@ def dynesty_plots(system, truthvals = None, outname = None):
 
 def plot_linear_fit_results(system, uncertainty_curves = 0, sim_length = 2000,
 	outname = None):
+	if system.linear_fit_results == None:
+		raise ValueError("No linear fit retrieval found in your "+
+			"system object!")
+
 	dresults = system.linear_fit_results
 	samples = dresults.samples
 	weights = np.exp(dresults.logwt - dresults.logz[-1])
@@ -117,7 +124,9 @@ def plot_linear_fit_results(system, uncertainty_curves = 0, sim_length = 2000,
 
 def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
 	outname = None):
-	
+	if system.results == None:
+		raise ValueError("No retrieval found in your system object!")
+
 	dresults = system.results
 	samples = dresults.samples
 	weights = np.exp(dresults.logwt - dresults.logz[-1])
@@ -176,34 +185,60 @@ def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
 				plt.close('all')
 	return None
 
-def plot_apsidal_alignment(results, nplanets = 2, bins = 500):
-	if nplanets != 2:
-		print("Only supported for two-planet systems right now")
-		return None
-	samples = results.samples
-	weights = np.exp(results.logwt - results.logz[-1])
-	samples_equal = dyfunc.resample_equal(samples, weights)
-	ecosw_ind = 2
-	esinw_ind = 3
-	planet_1_ecosw = samples_equal[:,ecosw_ind]
-	planet_1_esinw = samples_equal[:,esinw_ind]
-	planet_2_ecosw = samples_equal[:,ecosw_ind + 5]
-	planet_2_esinw = samples_equal[:,esinw_ind + 5]
-	planet_1_w = np.arctan2(planet_1_esinw, planet_1_ecosw)*180./np.pi
-	planet_2_w = np.arctan2(planet_2_esinw, planet_2_ecosw)*180./np.pi
-	apsidal_alignment = planet_2_w - planet_1_w
-	
-	span = 0.999999426697
-	q = [0.5 - 0.5 * span, 0.5 + 0.5 * span]
-	ranges = dyfunc.quantile(apsidal_alignment, q)
-	n1, b1 = np.histogram(apsidal_alignment, bins = bins, range = ranges,
-		density = True)
-	n1 = norm_kde(n1, 10.)
-	x1 = 0.5 * (b1[1:] + b1[:-1])
-	y1 = n1
-	plt.fill_between(x1, y1, color='b', alpha = 0.5)
-	plt.xlabel(r'$\omega_2 - \omega_1$ [$\degree$]')
-	plt.show()
+def plot_eccentricity_posteriors(system, bins = 500, outname = None):
+	if system.results == None:
+		raise ValueError("No retrieval found in your system object!")
+
+	#plotting eccentricity and vectors
+	samps = system.samples_equal
+	thetas = [system.parse_with_fixed(samp) for samp in samps]
+	plot_names = ['ecc', 'arg_peri', 'ecc_vec_h', 'ecc_vec_k']
+	plot_labels = [r'$e$', r'$\omega$', r'$h = e\cos\omega$', 
+		r'$k = e\sin\omega$']
+	ecc = np.zeros([system.nplanets, samps.shape[0]])
+	argperi = np.zeros(ecc.shape)
+	h = np.zeros(ecc.shape)
+	k = np.zeros(ecc.shape)
+	for i in range(ecc.shape[0]):
+		for j in range(ecc.shape[1]):
+			_,_,hprime,kprime,_,_,_ = thetas[j][i]
+			ecc[i,j] = hprime**2 + kprime**2
+			argper_rad = np.arctan2(kprime, hprime)
+			argperi[i,j] = argper_rad*180./np.pi
+			h[i,j] = ecc[i,j]*np.cos(argper_rad)
+			k[i,j] = ecc[i,j]*np.sin(argper_rad)
+		for arr, name, lab in zip([ecc[i], argperi[i], h[i], k[i]], 
+			plot_names, plot_labels):
+			plotname = f'_{i+1}_{name}.png'
+			plot_kde(arr, plotname, lab, bins, outname)
+
+	#plotting apsidal alignments
+	comb = combinations(np.arange(system.nplanets), 2)
+	for comb in list(comb):
+		c = sorted(comb, reverse = True)
+		name = f'_apsidal_{c[0]+1}_{c[1]+1}.png'
+		label = f'$\omega_{c[0]+1} - \omega_{c[1]+1}$'
+		apsidal_alignment = argperi[c[0],:] - argperi[c[1],:]
+		apsidal_alignment %= 360.
+		apsidal_alignment -= 180.
+		plot_kde(apsidal_alignment, name, label, bins, outname) 
+	return None
+
+def plot_kde(arr, name, lab, bins, outname):
+	n, b = np.histogram(arr, bins = bins, density = True)
+	n = norm_kde(n, 10.)
+	x = 0.5 * (b[1:] + b[:-1])
+	y = n
+	plt.fill_between(x, y, color='b', alpha = 0.6)
+	plt.xlabel(lab)
+	plt.ylabel("(Integral-normalized) Probability Density")
+	plt.xlim(min(x), max(x))
+	plt.ylim(0, max(y)*1.05)
+	if outname == None:
+		plt.show()
+	else:
+		plt.savefig(outname + name)
+		plt.close('all')
 	return None
 
 def plot_resonant_angle(system, resonance_ratio_string, sim_len_yr,
