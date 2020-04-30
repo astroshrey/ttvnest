@@ -58,6 +58,8 @@ class TTVSystem:
 
 		self.ndim = len(self.fit_param_names)
 		self.results = None
+		self.samples_equal = None
+		self.max_like_result = None
 
 		self.linear_fit_priors = self.get_linear_fit_priors()
 		self.linear_fit_results = None
@@ -336,6 +338,16 @@ class TTVSystem:
 		sampler.run_nested(**run_kwargs)
 
 		self.results = sampler.results
+
+		samples = results.samples
+		weights = np.exp(results.logwt - results.logz[-1])
+		samples_equal = dyfunc.resample_equal(samples, weights)
+		self.samples_equal = samples_equal
+		
+		ind = np.argmax(samples.logl)
+		max_like_result = samples[ind]
+		self.max_like_result = max_like_result
+
 		return self.results
 
 
