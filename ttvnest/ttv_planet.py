@@ -1,10 +1,61 @@
-import numpy as np
-from . import plot_utils as pu
-from .constants import *
 import dynesty
+import numpy as np
 from dynesty import utils as dyfunc
 
 class TTVPlanet:
+	"""
+	A planet to include in the TTV model. Optionally initialized
+	with timing data (if the planet is transiting) and priors
+	on the dynamical parameters.
+
+	All priors are specified with a tuple of shape (2,) or (3,) where
+	the first elements denotes the type of prior (the prior transform
+	for nested sampling is done internally). Currently, four priors are
+	supported with the following first elements:
+	'Fixed', with the second element being the fixed value
+	'Normal', with the second and third elements specifying `N(a, b)`.
+	'Uniform', with the second and third elements specifying `U(a, b)`. 
+	'Periodic', with the second and third elements specifying `U(a, b)` and
+	periodic boundary conditions (useful when uniformly samping angles).
+
+	Parameters
+	----------
+	ttv : `~numpy.ndarray` with shape `(len_ttv,)`, optional
+		Timing data for the planet if it is transiting.
+	ttv_err : `~numpy.ndarray` with shape `(len_ttv,)`, optional
+		Timing errors for the planet if it is transiting.
+	epochs : `~numpy.ndarray` with shape `(len_ttv,)`, optional
+		Epochs for the transit times in `ttv`.
+	mass_prior : tuple with shape (2,) or (3,)
+		The prior on planetary dynamical mass, `M_p/M_star`, in
+		units of `M_Earth/M_Sun = 3e-6`. Default is `U(0, 100)`. 
+	period_prior : tuple with shape (2,) or (3,)
+		The prior on orbital period, in units of days. Default is 
+		`U(1, 100)`. 
+	h_prime_prior : tuple with shape (2,) or (3,)
+		The prior on `sqrt(e)cos(omega)`. Default is `U(-1, 1)`. 
+	k_prime_prior : tuple with shape (2,) or (3,)
+		The prior on `sqrt(e)sin(omega)`. Default is `U(-1, 1)`. 
+	inc_prior : tuple with shape (2,) or (3,)
+		The prior on the orbital inclination in degrees. Default is
+		fixed to 90.
+	longnode_prior : tuple with shape (2,) or (3,)
+		The prior on the longitude of ascending node in degrees.
+		Default is fixed to 0.
+	t0_prior : tuple with shape (2,) or (3,)
+		The prior on the time of first transit in days, referenced
+		to the system provided in `ttv`. If the planet is transiting
+		(`ttv`, `ttv_err`, and `epochs` are not None), this will be
+		set by default to `U(t0_avg - 100*sigma, t0_avg + 100*sigma)`,
+		where t0_avg is computed from a linear fit to the data and
+		sigma is the first error bar in `ttv_err`. Otherwise, if the
+		planet is not transiting, this defaults to None and is unused.
+	meananom_prior : tuple with shape (2,) or (3,)
+		The prior on the mean anomaly in degrees. Will be used if
+		the planet is not transiting. Default is periodic on [0, 360].
+
+	"""
+	
 	def __init__(self, ttv = None, ttv_err = None, epochs = None,
 		mass_prior = ('Uniform', 0., 100.),
 		period_prior = ('Uniform', 1., 100.),
@@ -14,9 +65,7 @@ class TTVPlanet:
 		longnode_prior = ('Fixed', 0.),
 		t0_prior = None,
 		meananom_prior = ('Periodic', 0., 360.)):
-		"""
-		Docstring
-		"""
+
 		self.transiting = self.validate_input(ttv, ttv_err,
 			epochs)
 		if self.transiting:
@@ -61,11 +110,41 @@ class TTVPlanet:
 			self.prior_dict['meananom_prior'] = meananom_prior
 
 	def get_trend(self, data, obsind, errs):
+		"""
+		Compute a mean ephemeris for the planet.
+
+		Parameters
+		__________
+		data : `~numpy.ndarray` with shape `(len_ttv,)`
+			The timing data for the system.
+		obsind : `~numpy.ndarray` with shape `(len_ttv,)`
+			The epochs at which those timing data were taken.
+		errs : `~numpy.ndarray` with shape `(len_ttv,)`
+			The error on each timing data point.
+		"""   
 		z = np.polyfit(obsind, data, 1, w = 1/errs)
 		p = np.poly1d(z)
 		return p
 
 	def validate_input(self, ttv, ttv_err, epochs):
+		"""
+		Validate the input for a transiting planet. Ensures that
+		the timing, error, and epoch arrays are all set for a
+		transiting planet or are all none for a non-transiting planet.
+		Additionally ensures that the transiting planet arrays are 
+		all the same shape.
+
+		Parameters
+		__________
+		ttv : `~numpy.ndarray` with shape `(len_ttv,)`
+			The timing data for the system.
+		ttv_err : `~numpy.ndarray` with shape `(len_ttv,)`
+			The error on each timing data point.
+		epochs : `~numpy.ndarray` with shape `(len_ttv,)`
+			The epochs at which those timing data were taken.
+		"""   
+	
+
 		if ttv is None and ttv_err is None and epochs is None:
 			return False
 		elif ttv is not None and ttv_err is not None and \
