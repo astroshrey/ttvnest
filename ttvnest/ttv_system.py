@@ -92,16 +92,21 @@ class TTVSystem:
 					old_prior[2] -= (reftime - \
 						ntransits * planet.avg_period)
 				planet.prior_dict['t0_prior'] = tuple(old_prior)
-		
+
+		#zero out the start time as everything is now zero ref'd
+		self.start_time -= reftime 
+
 		self.validate_epochs()
 		return None 
 
 	def validate_epochs(self):
 		for i, planet in enumerate(self.planets):
-			first_transit = planet.ttv[0] - \
-				planet.epochs[0]*planet.avg_period
-			if first_transit - planet.avg_period >= 0:
-				raise UserWarning("The epoch array is " + 
+			if planet.transiting:
+				first_transit = planet.ttv[0] - \
+					planet.epochs[0]*planet.avg_period
+				if first_transit - planet.avg_period >= 0:
+					raise UserWarning(
+					"The epoch array is " + 
 					f'incorrect for planet {i+1}: first '+
 					"transit was calculated to be " + 
 					f'{first_transit}, but this is ' +
@@ -337,14 +342,15 @@ class TTVSystem:
 		run_kwargs = filter_by_key(run_kw)
 		sampler.run_nested(**run_kwargs)
 
-		self.results = sampler.results
+		results = sampler.results
+		self.results = results
 
 		samples = results.samples
 		weights = np.exp(results.logwt - results.logz[-1])
 		samples_equal = dyfunc.resample_equal(samples, weights)
 		self.samples_equal = samples_equal
 		
-		ind = np.argmax(samples.logl)
+		ind = np.argmax(results.logl)
 		max_like_result = samples[ind]
 		self.max_like_result = max_like_result
 
