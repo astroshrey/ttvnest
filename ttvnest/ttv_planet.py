@@ -64,7 +64,8 @@ class TTVPlanet:
 		inc_prior = ('Fixed', 90.),
 		longnode_prior = ('Fixed', 0.),
 		t0_prior = None,
-		meananom_prior = ('Periodic', 0., 360.)):
+		meananom_prior = ('Periodic', 0., 360.),
+		n_per = None):
 
 		self.transiting = self.validate_input(ttv, ttv_err,
 			epochs)
@@ -90,6 +91,10 @@ class TTVPlanet:
 			self.mean_ephem = None
 			self.avg_period = None
 			self.avg_t0 = None
+		if n_per is not None:
+			self.n_per = n_per
+		else:
+			self.n_per = 100
 
 		self.prior_dict = {'mass_prior': mass_prior,
 				'period_prior': period_prior,
@@ -102,8 +107,10 @@ class TTVPlanet:
 				self.avg_t0 = self.ttv[0] - \
 					self.epochs[0]*self.avg_period
 				self.prior_dict['t0_prior'] = ('Uniform',
-					self.avg_t0 - 100*self.ttv_err[0],
-					self.avg_t0 + 100*self.ttv_err[0])
+					self.avg_t0 - \
+						self.n_per*self.ttv_err[0],
+					self.avg_t0 + \
+						self.n_per*self.ttv_err[0])
 			else:
 				self.prior_dict['t0_prior'] = t0_prior
 		else:
