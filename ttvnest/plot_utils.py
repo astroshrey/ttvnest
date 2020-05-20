@@ -123,7 +123,7 @@ def plot_linear_fit_results(system, uncertainty_curves = 0, sim_length = 2000,
 	return None
 
 def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
-	outname = None):
+	outname = None, print_max_likelihood_result = False):
 	if system.results == None:
 		raise ValueError("No retrieval found in your system object!")
 
@@ -141,7 +141,8 @@ def plot_results(system, uncertainty_curves = 0, sim_length = 2000,
 	#data and median result
 	system.sim_length = sim_length
 	models = system.forward_model(max_like_res)
-
+	if print_max_likelihood_result:
+		print(models)
 	#uncertainty results
 	unc_models = []
 	for samp in random_samples:
