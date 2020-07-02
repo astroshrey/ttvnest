@@ -243,7 +243,7 @@ def plot_kde(arr, name, lab, bins, outname):
 	return None
 
 def plot_resonant_angle(system, resonance_ratio_string, sim_len_yr,
-	outname = None, downsample = 1):
+	outname = None, downsample = 1, sim_res_factor = 5):
 	plt.figure(figsize = (12, 8))
 	matplotlib.rcParams['font.size'] = 20
 	results = system.results
@@ -255,14 +255,15 @@ def plot_resonant_angle(system, resonance_ratio_string, sim_len_yr,
 	q = int(num) - p #order of resonance
 
 	times, angles = rb.track_resonant_angle(
-		system, max_like_theta, p, q, sim_len_yr)
+		system, max_like_theta, p, q, sim_len_yr, sim_res_factor)
 	times = times[::downsample]
 	angles = angles[::downsample]
 
 	val1 = p+q if p+q > 1 else ''
 	val2 = p if p > 1 else ''
 	val3 = q if q > 1 else ''
-	plt.plot(times, (angles*180./np.pi) % 360., c = 'b')
+	print(len(times))
+	plt.plot(times, (angles*180./np.pi) % 360, c = 'b')
 	plt.xlabel('Time [yr]')
 	plt.ylabel(r'${0}\lambda_2 - {1}\lambda_1 - {2}\varpi_2$'.format(
 		val1, val2, val3))
@@ -317,6 +318,18 @@ def plot_information_timeseries(all_divs, obs_epoch = None, outname = None):
 			plt.close('all')
 	return None
 
+def plot_megno_histogram(megnos, timescale_str = '1 kyr', outname = None):
+	plt.hist(megnos, bins = 100, range = (0, 10), color = 'b')
+	plt.xlabel(r'MEGNO  $<Y>$ at '+timescale_str)
+	plt.ylabel('Number')
+	if outname == None:
+		plt.show()
+	else:
+		plt.savefig(outname + f'_megno_histogram.png')
+		plt.close('all')
+	return None
+
+
 def plot_ttv_data(system):
 	for planet in system.planets:
 		if planet.transiting:
@@ -353,3 +366,5 @@ def debug_plots(system, models):
 		print(mean_ephem(epochs))
 		plt.show()
 	return None
+
+
