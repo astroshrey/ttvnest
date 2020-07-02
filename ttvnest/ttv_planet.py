@@ -1,6 +1,4 @@
-import dynesty
 import numpy as np
-from dynesty import utils as dyfunc
 
 class TTVPlanet:
 	"""
