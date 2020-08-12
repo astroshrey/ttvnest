@@ -40,9 +40,9 @@ class TTVSystem:
 			#internal timekeeping
 			self.sim_length = maxtime - mintime
 
-		self.reference_times(self.start_time)
 		if verbose:
 			self.print_timekeeping_standards()
+		self.reference_times(self.start_time)
 
 		self.data = np.array([p.ttv for p in self.planets \
 			if p.transiting])
